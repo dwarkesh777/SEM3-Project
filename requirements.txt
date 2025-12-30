@@ -1,10 +1,11 @@
 Flask
 flask-pymongo
-pymongo
+flask-jwt-extended
+flask-socketio
 python-dotenv
 cloudinary
-werkzeug
-firebase-admin
 authlib
-flask-jwt-extended
 bcrypt
+firebase-admin
+gunicorn
+eventlet

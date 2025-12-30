@@ -1,0 +1,347 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<style>
+    .hostel-card {
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    
+    .hostel-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.15) !important;
+    }
+    
+    .hostel-card .card-img-top {
+        border-radius: 0;
+    }
+    
+    .hostel-card .badge.bg-dark {
+        background-color: rgba(0, 0, 0, 0.7) !important;
+        backdrop-filter: blur(5px);
+        border-radius: 20px;
+        font-weight: 500;
+    }
+    
+    .amenity-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        background-color: white;
+        border: 1px solid #e0e0e0;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: #424242;
+    }
+    
+    .amenity-badge i {
+        font-size: 0.9rem;
+        color: #757575;
+    }
+    
+    .price-display {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    
+    .search-suggestions {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #ddd;
+        border-top: none;
+        max-height: 200px;
+        overflow-y: auto;
+        z-index: 1000;
+    }
+    
+    .suggestion-item {
+        padding: 10px 15px;
+        cursor: pointer;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    
+    .suggestion-item:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .filter-sidebar {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        padding: 20px;
+        position: sticky;
+        top: 20px;
+    }
+    
+    .loading-spinner {
+        display: none;
+        text-align: center;
+        padding: 40px;
+    }
+    
+    .no-results {
+        text-align: center;
+        padding: 60px 20px;
+        color: #666;
+    }
+</style>
+
+<!-- Hero Section with Search -->
+<section class="hero">
+    <div class="container">
+        <h1 class="display-4 fw-bold mb-4">Find Your Perfect Stay</h1>
+        <p class="lead mb-4">Discover the best hostels, PGs, and apartments in your city</p>
+        
+        <!-- Enhanced Search Bar -->
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="position-relative">
+                    <form id="searchForm" class="d-flex">
+                        <input type="text" class="form-control form-control-lg me-2" 
+                               placeholder="Search hostels by city, name, or location..." 
+                               id="searchInput" autocomplete="off">
+                        <button class="btn btn-primary btn-lg" type="submit">
+                            <i class="bi bi-search me-2"></i>Search
+                        </button>
+                    </form>
+                    <div id="searchSuggestions" class="search-suggestions"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Main Content -->
+<div class="container my-5">
+    <div class="row">
+        <!-- Filters Sidebar -->
+        <div class="col-lg-3">
+            <div class="filter-sidebar">
+                <h5 class="mb-4">Filters</h5>
+                
+                <div class="mb-3">
+                    <label for="cityFilter" class="form-label">City</label>
+                    <select class="form-select" id="cityFilter">
+                        <option value="">All Cities</option>
+                        <option value="Mumbai">Mumbai</option>
+                        <option value="Delhi">Delhi</option>
+                        <option value="Bangalore">Bangalore</option>
+                        <option value="Pune">Pune</option>
+                        <option value="Hyderabad">Hyderabad</option>
+                    </select>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="typeFilter" class="form-label">Hostel Type</label>
+                    <select class="form-select" id="typeFilter">
+                        <option value="">All Types</option>
+                        <option value="Boys">Boys</option>
+                        <option value="Girls">Girls</option>
+                        <option value="Co-ed">Co-ed</option>
+                    </select>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="priceRange" class="form-label">
+                        Max Price: ₹<span id="priceValue">10000</span>
+                    </label>
+                    <input type="range" class="form-range" id="priceRange" 
+                           min="0" max="20000" step="500" value="10000">
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Amenities</label>
+                    <div class="amenity-filters">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" value="WiFi" id="amenityWiFi">
+                            <label class="form-check-label" for="amenityWiFi">WiFi</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" value="AC" id="amenityAC">
+                            <label class="form-check-label" for="amenityAC">AC</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" value="Laundry" id="amenityLaundry">
+                            <label class="form-check-label" for="amenityLaundry">Laundry</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" value="Food" id="amenityFood">
+                            <label class="form-check-label" for="amenityFood">Food</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <button class="btn btn-outline-secondary btn-sm" onclick="clearFilters()">
+                    Clear Filters
+                </button>
+            </div>
+        </div>
+        
+        <!-- Hostels Grid -->
+        <div class="col-lg-9">
+            <!-- Results Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4>Available Hostels</h4>
+                <div class="text-muted">
+                    <span id="resultsCount">Loading...</span> hostels found
+                </div>
+            </div>
+            
+            <!-- Loading Spinner -->
+            <div id="loadingSpinner" class="loading-spinner">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Finding hostels for you...</p>
+            </div>
+            
+            <!-- Hostels Grid -->
+            <div id="hostelGrid" class="row">
+                <!-- Hostels will be dynamically loaded here -->
+                {% if hostels %}
+                    {% for hostel in hostels %}
+                    <div class="col-md-6 col-lg-4 mb-4">
+                        <div class="card hostel-card h-100">
+                            <div class="position-relative">
+                                <img src="{{ hostel.image or 'https://via.placeholder.com/400x300?text=No+Image' }}" 
+                                     class="card-img-top" alt="{{ hostel.name }}">
+                                <span class="badge bg-dark position-absolute top-0 end-0 m-2">{{ hostel.type or 'Hostel' }}</span>
+                            </div>
+                            <div class="card-body d-flex flex-column">
+                                <h5 class="card-title">{{ hostel.name }}</h5>
+                                <p class="card-text text-muted mb-2">
+                                    <i class="bi bi-geo-alt"></i> {{ hostel.location or 'Location' }}, {{ hostel.city or 'City' }}
+                                </p>
+                                <p class="card-text flex-grow-1">{{ (hostel.desc or 'Description')[:100] + ('...' if (hostel.desc or 'Description')|length > 100 else '') }}</p>
+                                <div class="mb-3">
+                                    {% for amenity in (hostel.amenities or ['WiFi', 'AC', 'Laundry'])[:3] %}
+                                    <span class="amenity-badge">
+                                        {% if amenity == 'WiFi' %}<i class="bi bi-wifi"></i>
+                                        {% elif amenity == 'AC' %}<i class="bi bi-snow"></i>
+                                        {% elif amenity == 'Laundry' %}<i class="bi bi-basket"></i>
+                                        {% else %}<i class="bi bi-check-circle"></i>{% endif %} {{ amenity }}
+                                    </span>
+                                    {% endfor %}
+                                </div>
+                                <div class="mb-3">
+                                    <div class="price-display">
+                                        {% if hostel.original_price %}
+                                        <span class="text-decoration-line-through text-muted">₹{{ hostel.original_price }}</span>
+                                        <span class="fw-bold text-success">₹{{ hostel.price }}</span>
+                                        <span class="badge bg-success">Save ₹{{ hostel.original_price - hostel.price }}</span>
+                                        {% else %}
+                                        <span class="fw-bold">₹{{ hostel.price }}</span>
+                                        <span class="text-muted">/month</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mt-auto">
+                                    <a href="/hostel/{{ hostel._id }}" class="btn btn-primary btn-sm">View Details</a>
+                                    <button class="btn btn-outline-primary btn-sm" onclick="addToFavorites('{{ hostel._id }}')">
+                                        <i class="bi bi-heart"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Enhanced JavaScript for Dynamic Loading -->
+<script>
+// Fallback for when modules don't load
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize results count
+    const hostelGrid = document.getElementById('hostelGrid');
+    const resultsCount = document.getElementById('resultsCount');
+    
+    if (hostelGrid && resultsCount) {
+        const hostelCards = hostelGrid.querySelectorAll('.col-md-6');
+        resultsCount.textContent = hostelCards.length;
+    }
+    
+    // Setup search form
+    const searchForm = document.getElementById('searchForm');
+    if (searchForm) {
+        searchForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const query = document.getElementById('searchInput').value;
+            if (query.trim()) {
+                window.location.href = `/search?query=${encodeURIComponent(query)}`;
+            }
+        });
+    }
+    
+    // Setup filters
+    const filters = ['cityFilter', 'typeFilter', 'priceRange'];
+    filters.forEach(filterId => {
+        const element = document.getElementById(filterId);
+        if (element) {
+            element.addEventListener('change', applyFilters);
+        }
+    });
+    
+    // Amenity checkboxes
+    document.querySelectorAll('.amenity-filters input').forEach(checkbox => {
+        checkbox.addEventListener('change', applyFilters);
+    });
+    
+    // Price range slider
+    const priceRange = document.getElementById('priceRange');
+    const priceValue = document.getElementById('priceValue');
+    if (priceRange && priceValue) {
+        priceRange.addEventListener('input', function(e) {
+            priceValue.textContent = e.target.value;
+        });
+    }
+});
+
+function clearFilters() {
+    document.getElementById('cityFilter').value = '';
+    document.getElementById('typeFilter').value = '';
+    document.getElementById('priceRange').value = '10000';
+    document.getElementById('priceValue').textContent = '10000';
+    document.querySelectorAll('.amenity-filters input').forEach(checkbox => {
+        checkbox.checked = false;
+    });
+    
+    // Reload page to reset filters
+    window.location.href = '/';
+}
+
+function applyFilters() {
+    // This would typically make an API call with filters
+    // For now, just show a message
+    console.log('Filters applied');
+}
+
+function addToFavorites(hostelId) {
+    console.log('Added to favorites:', hostelId);
+    // Show notification
+    const notification = document.createElement('div');
+    notification.className = 'alert alert-success alert-dismissible fade show position-fixed';
+    notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    notification.innerHTML = `
+        Added to favorites!
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(notification);
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
+    }, 3000);
+}
+</script>
+{% endblock %}

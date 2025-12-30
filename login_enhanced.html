@@ -1,0 +1,344 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<style>
+    .login-container {
+        max-width: 450px;
+        margin: 50px auto;
+        padding: 40px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    }
+    
+    .social-login-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 12px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        background: white;
+        color: #333;
+        text-decoration: none;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        margin-bottom: 15px;
+    }
+    
+    .social-login-btn:hover {
+        background: #f8f9fa;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    
+    .divider {
+        text-align: center;
+        margin: 30px 0;
+        position: relative;
+    }
+    
+    .divider::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: #ddd;
+    }
+    
+    .divider span {
+        background: white;
+        padding: 0 20px;
+        position: relative;
+        color: #666;
+    }
+    
+    .form-floating {
+        margin-bottom: 20px;
+    }
+    
+    .password-toggle {
+        position: absolute;
+        right: 15px;
+        top: 50%;
+        transform: translateY(-50%);
+        cursor: pointer;
+        color: #666;
+        z-index: 10;
+    }
+    
+    .loading-overlay {
+        display: none;
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255,255,255,0.9);
+        border-radius: 12px;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+</style>
+
+<div class="container">
+    <div class="login-container position-relative">
+        <!-- Loading Overlay -->
+        <div id="loadingOverlay" class="loading-overlay">
+            <div class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Signing in...</p>
+            </div>
+        </div>
+        
+        <!-- Header -->
+        <div class="text-center mb-4">
+            <h2 class="fw-bold">Welcome Back</h2>
+            <p class="text-muted">Sign in to your Stayfinder account</p>
+        </div>
+        
+        <!-- Error/Success Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <!-- Social Login -->
+        <div class="social-login-section">
+            <h6 class="text-center mb-3">Sign in with</h6>
+            
+            <button id="googleLoginBtn" class="social-login-btn w-100" type="button">
+                <svg width="20" height="20" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                Google
+            </button>
+            
+            <button id="facebookLoginBtn" class="social-login-btn w-100" type="button">
+                <i class="bi bi-facebook" style="color: #1877f2;"></i>
+                Facebook
+            </button>
+        </div>
+        
+        <div class="divider">
+            <span>OR</span>
+        </div>
+        
+        <!-- Traditional Login Form -->
+        <form id="loginForm" method="POST" novalidate>
+            <div class="form-floating">
+                <input type="email" class="form-control" id="email" name="email" placeholder="name@example.com" required>
+                <label for="email">Email address</label>
+                <div class="invalid-feedback">
+                    Please enter a valid email address.
+                </div>
+            </div>
+            
+            <div class="form-floating position-relative">
+                <input type="password" class="form-control" id="password" name="password" placeholder="Password" required>
+                <label for="password">Password</label>
+                <span class="password-toggle" onclick="togglePassword()">
+                    <i class="bi bi-eye" id="passwordToggleIcon"></i>
+                </span>
+                <div class="invalid-feedback">
+                    Please enter your password.
+                </div>
+            </div>
+            
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="rememberMe">
+                    <label class="form-check-label" for="rememberMe">
+                        Remember me
+                    </label>
+                </div>
+                <a href="#" class="text-decoration-none">Forgot password?</a>
+            </div>
+            
+            <button type="submit" class="btn btn-primary w-100 py-3 mb-3">
+                Sign In
+            </button>
+        </form>
+        
+        <!-- Sign Up Link -->
+        <div class="text-center">
+            <p class="mb-0">Don't have an account? <a href="/register" class="text-decoration-none">Sign up</a></p>
+        </div>
+    </div>
+</div>
+
+<!-- Enhanced JavaScript -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const loginForm = document.getElementById('loginForm');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+    
+    // Form validation
+    loginForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        // Reset validation
+        loginForm.classList.remove('was-validated');
+        emailInput.setCustomValidity('');
+        passwordInput.setCustomValidity('');
+        
+        // Validate form
+        if (!validateForm()) {
+            loginForm.classList.add('was-validated');
+            return;
+        }
+        
+        // Show loading
+        loadingOverlay.style.display = 'flex';
+        
+        // Get form data
+        const formData = new FormData(loginForm);
+        
+        try {
+            // Submit form
+            const response = await fetch('/login', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.text();
+            
+            if (response.redirected) {
+                // Success - redirect will happen automatically
+                window.location.href = response.url;
+            } else {
+                // Error - show error message
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(result, 'text/html');
+                const errorAlert = doc.querySelector('.alert-danger');
+                
+                if (errorAlert) {
+                    showError(errorAlert.textContent);
+                } else {
+                    showError('Login failed. Please try again.');
+                }
+            }
+        } catch (error) {
+            showError('Network error. Please try again.');
+        } finally {
+            loadingOverlay.style.display = 'none';
+        }
+    });
+    
+    // Real-time validation
+    emailInput.addEventListener('input', function() {
+        if (emailInput.value && !isValidEmail(emailInput.value)) {
+            emailInput.setCustomValidity('Please enter a valid email address.');
+        } else {
+            emailInput.setCustomValidity('');
+        }
+    });
+    
+    passwordInput.addEventListener('input', function() {
+        if (passwordInput.value && passwordInput.value.length < 6) {
+            passwordInput.setCustomValidity('Password must be at least 6 characters.');
+        } else {
+            passwordInput.setCustomValidity('');
+        }
+    });
+    
+    // Social login handlers
+    document.getElementById('googleLoginBtn').addEventListener('click', function() {
+        loadingOverlay.style.display = 'flex';
+        window.location.href = '/auth/google';
+    });
+    
+    document.getElementById('facebookLoginBtn').addEventListener('click', function() {
+        loadingOverlay.style.display = 'flex';
+        window.location.href = '/auth/facebook';
+    });
+});
+
+function validateForm() {
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    
+    let isValid = true;
+    
+    if (!email) {
+        document.getElementById('email').setCustomValidity('Email is required.');
+        isValid = false;
+    } else if (!isValidEmail(email)) {
+        document.getElementById('email').setCustomValidity('Please enter a valid email address.');
+        isValid = false;
+    }
+    
+    if (!password) {
+        document.getElementById('password').setCustomValidity('Password is required.');
+        isValid = false;
+    } else if (password.length < 6) {
+        document.getElementById('password').setCustomValidity('Password must be at least 6 characters.');
+        isValid = false;
+    }
+    
+    return isValid;
+}
+
+function isValidEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+}
+
+function togglePassword() {
+    const passwordInput = document.getElementById('password');
+    const toggleIcon = document.getElementById('passwordToggleIcon');
+    
+    if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        toggleIcon.classList.remove('bi-eye');
+        toggleIcon.classList.add('bi-eye-slash');
+    } else {
+        passwordInput.type = 'password';
+        toggleIcon.classList.remove('bi-eye-slash');
+        toggleIcon.classList.add('bi-eye');
+    }
+}
+
+function showError(message) {
+    // Remove existing error alerts
+    const existingAlerts = document.querySelectorAll('.alert-danger');
+    existingAlerts.forEach(alert => alert.remove());
+    
+    // Create new error alert
+    const errorAlert = document.createElement('div');
+    errorAlert.className = 'alert alert-danger alert-dismissible fade show';
+    errorAlert.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    // Insert at the top of the login container
+    const loginContainer = document.querySelector('.login-container');
+    loginContainer.insertBefore(errorAlert, loginContainer.firstChild);
+    
+    // Auto dismiss after 5 seconds
+    setTimeout(() => {
+        if (errorAlert.parentNode) {
+            errorAlert.parentNode.removeChild(errorAlert);
+        }
+    }, 5000);
+}
+</script>
+{% endblock %}

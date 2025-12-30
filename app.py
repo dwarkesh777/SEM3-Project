@@ -1,7 +1,8 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from flask_pymongo import PyMongo
-from flask_jwt_extended import JWTManager, jwt_required, create_access_token, get_jwt_identity
+from flask_jwt_extended import JWTManager, jwt_required, create_access_token, get_jwt_identity, verify_jwt_in_request
 from bson.objectid import ObjectId
+from bson import json_util
 import os
 from dotenv import load_dotenv
 import cloudinary
@@ -12,6 +13,7 @@ import bcrypt
 from datetime import datetime, timedelta
 import firebase_admin
 from firebase_admin import credentials, auth
+import json
 
 # Load environment variables from .env file
 load_dotenv()
@@ -104,6 +106,311 @@ facebook = oauth.register(
     authorize_url='https://www.facebook.com/dialog/oauth',
     client_kwargs={'scope': 'email'},
 )
+
+# --- API ENDPOINTS FOR JAVASCRIPT FRONTEND ---
+# Helper function to convert ObjectId to string
+def serialize_doc(doc):
+    if doc and '_id' in doc:
+        doc['_id'] = str(doc['_id'])
+    return doc
+
+@app.route('/api/hostels', methods=['GET'])
+def api_get_hostels():
+    """Get all hostels as JSON API"""
+    try:
+        # Get query parameters for filtering
+        city = request.args.get('city', '')
+        type_filter = request.args.get('type', '')
+        min_price = float(request.args.get('min_price', 0))
+        max_price = float(request.args.get('max_price', 10000))
+        amenities = request.args.getlist('amenities')
+        
+        # Build query
+        query = {}
+        if city:
+            query['city'] = city
+        if type_filter:
+            query['type'] = type_filter
+        query['price'] = {'$gte': min_price, '$lte': max_price}
+        if amenities:
+            query['amenities'] = {'$all': amenities}
+        
+        hostels = list(mongo.db.hostels.find(query))
+        serialized_hostels = [serialize_doc(hostel) for hostel in hostels]
+        
+        return jsonify({
+            'success': True,
+            'data': serialized_hostels,
+            'count': len(serialized_hostels)
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
+@app.route('/api/hostels/<hostel_id>', methods=['GET'])
+def api_get_hostel(hostel_id):
+    """Get specific hostel by ID as JSON API"""
+    try:
+        hostel = mongo.db.hostels.find_one({"_id": ObjectId(hostel_id)})
+        if hostel:
+            return jsonify({
+                'success': True,
+                'data': serialize_doc(hostel)
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Hostel not found'
+            }), 404
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
+@app.route('/api/hostels/search', methods=['POST'])
+def api_search_hostels():
+    """Search hostels as JSON API"""
+    try:
+        data = request.get_json()
+        query = data.get('query', '')
+        
+        # Build search query
+        search_query = {
+            "$or": [
+                {"name": {"$regex": query, "$options": "i"}},
+                {"city": {"$regex": query, "$options": "i"}},
+                {"location": {"$regex": query, "$options": "i"}},
+                {"desc": {"$regex": query, "$options": "i"}}
+            ]
+        }
+        
+        hostels = list(mongo.db.hostels.find(search_query))
+        serialized_hostels = [serialize_doc(hostel) for hostel in hostels]
+        
+        return jsonify({
+            'success': True,
+            'data': serialized_hostels,
+            'count': len(serialized_hostels),
+            'query': query
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
+@app.route('/api/user/profile', methods=['GET'])
+@jwt_required()
+def api_get_user_profile():
+    """Get current user profile as JSON API"""
+    try:
+        current_user_id = get_jwt_identity()
+        user = mongo.db.users.find_one({"_id": ObjectId(current_user_id)})
+        
+        if user:
+            # Remove password from response
+            user_data = serialize_doc(user)
+            user_data.pop('password', None)
+            
+            return jsonify({
+                'success': True,
+                'data': user_data
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'User not found'
+            }), 404
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
+@app.route('/api/user/bookings', methods=['GET'])
+@jwt_required()
+def api_get_user_bookings():
+    """Get user bookings as JSON API"""
+    try:
+        current_user_id = get_jwt_identity()
+        # This would integrate with a bookings collection
+        # For now, return empty array
+        return jsonify({
+            'success': True,
+            'data': [],
+            'message': 'Bookings feature coming soon'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
+@app.route('/api/hostels', methods=['POST'])
+@jwt_required()
+def api_create_hostel():
+    """Create new hostel as JSON API"""
+    try:
+        current_user_id = get_jwt_identity()
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['name', 'city', 'location', 'price', 'desc', 'type']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({
+                    'success': False,
+                    'message': f'Missing required field: {field}'
+                }), 400
+        
+        # Create hostel document
+        new_hostel = {
+            'name': data['name'],
+            'city': data['city'],
+            'location': data['location'],
+            'price': int(data['price']),
+            'original_price': data.get('original_price'),
+            'image': data.get('image', 'https://via.placeholder.com/400x300?text=No+Image'),
+            'photos': data.get('photos', []),
+            'desc': data['desc'],
+            'type': data['type'],
+            'amenities': data.get('amenities', []),
+            'appliances': data.get('appliances', []),
+            'room_types': data.get('room_types', []),
+            'longitude': float(data.get('longitude', 0.0)),
+            'latitude': float(data.get('latitude', 0.0)),
+            'neighborhood_highlights': data.get('neighborhood_highlights', []),
+            'contact_phone': data.get('contact_phone', ''),
+            'contact_email': data.get('contact_email', ''),
+            'address': data.get('address', ''),
+            'property_type': data.get('property_type', 'Hostel'),
+            'created_by': current_user_id,
+            'created_at': datetime.utcnow()
+        }
+        
+        result = mongo.db.hostels.insert_one(new_hostel)
+        created_hostel = mongo.db.hostels.find_one({"_id": result.inserted_id})
+        
+        return jsonify({
+            'success': True,
+            'data': serialize_doc(created_hostel),
+            'message': 'Hostel created successfully'
+        }), 201
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
+@app.route('/api/hostels/<hostel_id>', methods=['PUT'])
+@jwt_required()
+def api_update_hostel(hostel_id):
+    """Update hostel as JSON API"""
+    try:
+        current_user_id = get_jwt_identity()
+        data = request.get_json()
+        
+        # Check if hostel exists and user has permission
+        hostel = mongo.db.hostels.find_one({"_id": ObjectId(hostel_id)})
+        if not hostel:
+            return jsonify({
+                'success': False,
+                'message': 'Hostel not found'
+            }), 404
+        
+        # Check if user created this hostel or is admin
+        if hostel.get('created_by') != current_user_id:
+            return jsonify({
+                'success': False,
+                'message': 'Permission denied'
+            }), 403
+        
+        # Update hostel
+        update_data = {k: v for k, v in data.items() if k != '_id'}
+        update_data['updated_at'] = datetime.utcnow()
+        
+        mongo.db.hostels.update_one(
+            {"_id": ObjectId(hostel_id)},
+            {"$set": update_data}
+        )
+        
+        updated_hostel = mongo.db.hostels.find_one({"_id": ObjectId(hostel_id)})
+        
+        return jsonify({
+            'success': True,
+            'data': serialize_doc(updated_hostel),
+            'message': 'Hostel updated successfully'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
+@app.route('/api/hostels/<hostel_id>', methods=['DELETE'])
+@jwt_required()
+def api_delete_hostel(hostel_id):
+    """Delete hostel as JSON API"""
+    try:
+        current_user_id = get_jwt_identity()
+        
+        # Check if hostel exists and user has permission
+        hostel = mongo.db.hostels.find_one({"_id": ObjectId(hostel_id)})
+        if not hostel:
+            return jsonify({
+                'success': False,
+                'message': 'Hostel not found'
+            }), 404
+        
+        # Check if user created this hostel or is admin
+        if hostel.get('created_by') != current_user_id:
+            return jsonify({
+                'success': False,
+                'message': 'Permission denied'
+            }), 403
+        
+        mongo.db.hostels.delete_one({"_id": ObjectId(hostel_id)})
+        
+        return jsonify({
+            'success': True,
+            'message': 'Hostel deleted successfully'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+
+@app.route('/api/auth/verify', methods=['GET'])
+@jwt_required()
+def api_verify_token():
+    """Verify JWT token"""
+    try:
+        current_user_id = get_jwt_identity()
+        user = mongo.db.users.find_one({"_id": ObjectId(current_user_id)})
+        
+        if user:
+            user_data = serialize_doc(user)
+            user_data.pop('password', None)
+            
+            return jsonify({
+                'success': True,
+                'data': user_data,
+                'message': 'Token is valid'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'User not found'
+            }), 404
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
 
 # --- ROUTES ---
 
