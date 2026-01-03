@@ -6,6 +6,7 @@ from bson.objectid import ObjectId
 from bson import json_util
 import os
 import re
+import ssl
 from dotenv import load_dotenv
 import cloudinary
 import cloudinary.uploader
@@ -17,6 +18,7 @@ import firebase_admin
 from firebase_admin import credentials, auth
 import json
 import math
+from pymongo import MongoClient
 
 
 
@@ -38,8 +40,51 @@ oauth = OAuth(app)
 
 # --- DATABASE CONFIGURATION ---
 # Ensure MongoDB is running on your computer OR replace with your Atlas URL
-app.config["MONGO_URI"] = os.environ.get("MONGO_URI", "mongodb://localhost:27017/Stayfinder")
-mongo = PyMongo(app)
+MONGO_URI = os.environ.get("MONGO_URI", "mongodb+srv://harshal_mangukiya_db_user:HhH3iDZDPm71omqY@cluster0.ntg5ion.mongodb.net/?appName=Cluster0")
+
+print(f"MongoDB URI configured: {MONGO_URI[:30]}...")
+
+# Use direct MongoClient for reliable connection
+try:
+    client = MongoClient(
+        MONGO_URI, 
+        serverSelectionTimeoutMS=10000,
+        ssl=True,
+        tlsAllowInvalidCertificates=True,
+        retryWrites=False
+    )
+    # Test the connection
+    client.admin.command('ping')
+    print("✓ MongoDB Atlas connection successful")
+    
+    # Get the database explicitly
+    db = client["stayfinder"]
+    print(f"✓ Database 'stayfinder' accessible")
+    
+    # Create a simple mongo object with db attribute
+    class SimpleMongo:
+        def __init__(self, database):
+            self._db = database
+            self.cx = client
+            
+        @property
+        def db(self):
+            return self._db
+    
+    mongo = SimpleMongo(db)
+    
+except Exception as e:
+    print(f"✗ MongoDB connection failed: {e}")
+    # Create a mock mongo object for development
+    class MockMongo:
+        @property
+        def db(self):
+            return None
+        @property 
+        def cx(self):
+            return None
+    mongo = MockMongo()
+    print("⚠ Using mock database - some features may not work")
 
 # --- CLOUDINARY CONFIGURATION ---
 # Only configure Cloudinary if credentials are available
@@ -749,7 +794,7 @@ def debug_cloudinary():
 def inject_user():
     """Make user data available in all templates"""
     user = None
-    if 'user_id' in session:
+    if 'user_id' in session and mongo.db is not None:
         user = mongo.db.users.find_one({'_id': ObjectId(session['user_id'])})
         # Convert ObjectId to string for template usage
         if user:
@@ -760,7 +805,10 @@ def inject_user():
 @app.route('/')
 def home():
     # Get all hostels from the database
-    hostels = list(mongo.db.hostels.find())
+    if mongo.db is not None:
+        hostels = list(mongo.db.hostels.find())
+    else:
+        hostels = []  # Empty list when database is not available
     return render_template('index.html', hostels=hostels)
 
 @app.route('/test-college-search')
@@ -771,7 +819,10 @@ def test_college_search():
 def search():
     query = request.form.get('query')
     # Simple search by City (case insensitive)
-    hostels = list(mongo.db.hostels.find({"city": {"$regex": query, "$options": "i"}}))
+    if mongo.db is not None:
+        hostels = list(mongo.db.hostels.find({"city": {"$regex": query, "$options": "i"}}))
+    else:
+        hostels = []  # Empty list when database is not available
     return render_template('index.html', hostels=hostels)
 
 @app.route('/about')
@@ -815,7 +866,10 @@ def debug_session():
 @app.route('/hostel/<hostel_id>')
 def detail(hostel_id):
     # Find specific hostel by ID
-    hostel = mongo.db.hostels.find_one({"_id": ObjectId(hostel_id)})
+    if mongo.db is not None:
+        hostel = mongo.db.hostels.find_one({"_id": ObjectId(hostel_id)})
+    else:
+        hostel = None  # No hostel when database is not available
     return render_template('detail.html', hostel=hostel)
 
 @app.route('/add', methods=['GET', 'POST'])
