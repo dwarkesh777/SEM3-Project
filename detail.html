@@ -355,7 +355,7 @@
     }
 </style>
 
-<div class="container mt-5" data-user-logged-in="{% if session.get('user_id') %}true{% else %}false{% endif %}" data-photos="{{ all_photos|map('string')|list|tojson|safe }}" data-hostel-id="{{ hostel._id|string if hostel and hostel._id else '' }}">
+<div class="container mt-5" data-user-logged-in="{% if session.get('user_id') %}true{% else %}false{% endif %}" data-photos="{{ all_photos|tojson|safe }}" data-hostel-id="{{ hostel._id|string if hostel and hostel._id else '' }}">
     <!-- Header Section -->
     <div class="detail-header">
         <div class="row">
@@ -365,9 +365,15 @@
                     {% set all_photos = [] %}
                     {% if hostel.photos and hostel.photos|length > 0 %}
                         {% set all_photos = hostel.photos %}
+                        <!-- Debug: Found {{ hostel.photos|length }} photos in hostel.photos -->
                     {% elif hostel.image and hostel.image.strip() %}
                         {% set all_photos = [hostel.image] %}
+                        <!-- Debug: Using single hostel.image -->
+                    {% else %}
+                        <!-- Debug: No photos found, using empty array -->
                     {% endif %}
+                    
+                    <!-- Debug: Final all_photos array has {{ all_photos|length }} items -->
                     
                     <!-- Property Type Badge -->
                     {% if hostel.property_type %}
@@ -380,7 +386,7 @@
                         <!-- Main Photo -->
                         <img id="mainPhoto" src="{{ all_photos[0] }}" class="main-photo" alt="{{ hostel.name }}"
                              onclick="openLightbox(0)"
-                             onerror="this.onerror=null; this.src='https://via.placeholder.com/600x400?text=Image+Not+Available';"
+                             onerror="this.onerror=null; this.src='https://via.placeholder.com/600x400?text=Image+Not+Available'; console.error('Failed to load main image:', '{{ all_photos[0] }}');"
                              style="cursor: pointer;">
                         
                         <!-- More Photos Overlay (if more than 1 photo) -->
@@ -398,7 +404,7 @@
                                  data-photo="{{ photo }}"
                                  data-index="{{ loop.index0 }}"
                                  onclick="changeMainPhoto(this); openLightbox(this.getAttribute('data-index'))"
-                                 onerror="this.onerror=null; this.src='https://via.placeholder.com/80x80?text=Error';"
+                                 onerror="this.onerror=null; this.src='https://via.placeholder.com/80x80?text=Error'; console.error('Failed to load thumbnail:', '{{ photo }}');"
                                  style="cursor: pointer;">
                             {% endfor %}
                         </div>
@@ -868,8 +874,23 @@ function changeMainPhoto(thumbnailElement) {
     // Get photo URL from data attribute
     const photoUrl = thumbnailElement.getAttribute('data-photo');
     
+    if (!photoUrl) {
+        console.error('No photo URL found on thumbnail');
+        return;
+    }
+    
+    console.log('Changing main photo to:', photoUrl);
+    
     // Change the main photo
-    document.getElementById('mainPhoto').src = photoUrl;
+    var mainPhoto = document.getElementById('mainPhoto');
+    if (mainPhoto) {
+        mainPhoto.src = photoUrl;
+        // Add error handling for the main photo change
+        mainPhoto.onerror = function() {
+            console.error('Failed to load main photo:', photoUrl);
+            this.src = 'https://via.placeholder.com/600x400?text=Image+Not+Available';
+        };
+    }
     
     // Update active thumbnail
     // Remove active class from all thumbnails
@@ -890,13 +911,21 @@ var photos = [];
 try {
     var photosData = document.querySelector('.container').getAttribute('data-photos');
     photos = photosData ? JSON.parse(photosData) : [];
+    console.log('Loaded photos:', photos);
 } catch (e) {
     console.error('Error parsing photos:', e);
     photos = [];
 }
 
 function openLightbox(index) {
-    currentPhotoIndex = index;
+    console.log('Opening lightbox at index:', index, 'with photos:', photos);
+    
+    if (!photos || photos.length === 0) {
+        console.error('No photos available');
+        return;
+    }
+    
+    currentPhotoIndex = parseInt(index);
     updateLightbox();
     document.getElementById('lightbox').classList.add('active');
     document.body.style.overflow = 'hidden'; // Prevent background scrolling
@@ -908,6 +937,8 @@ function closeLightbox() {
 }
 
 function navigateLightbox(direction) {
+    if (!photos || photos.length === 0) return;
+    
     currentPhotoIndex += direction;
     
     // Wrap around if we go past the beginning or end
@@ -922,8 +953,20 @@ function navigateLightbox(direction) {
 
 function updateLightbox() {
     if (photos.length > 0 && currentPhotoIndex >= 0 && currentPhotoIndex < photos.length) {
-        document.getElementById('lightbox-image').src = photos[currentPhotoIndex];
-        document.getElementById('lightbox-counter').textContent = (currentPhotoIndex + 1) + ' / ' + photos.length;
+        var imageUrl = photos[currentPhotoIndex];
+        console.log('Setting lightbox image to:', imageUrl);
+        
+        var lightboxImage = document.getElementById('lightbox-image');
+        var lightboxCounter = document.getElementById('lightbox-counter');
+        
+        if (lightboxImage && lightboxCounter) {
+            lightboxImage.src = imageUrl;
+            lightboxImage.onerror = function() {
+                console.error('Failed to load image:', imageUrl);
+                this.src = 'https://via.placeholder.com/800x600?text=Image+Not+Available';
+            };
+            lightboxCounter.textContent = (currentPhotoIndex + 1) + ' / ' + photos.length;
+        }
     }
 }
 
